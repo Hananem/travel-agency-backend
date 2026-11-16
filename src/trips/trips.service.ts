@@ -180,7 +180,7 @@ export class TripsService {
               ? { startDate: 'asc' }
               : { createdAt: 'desc' };
 
-    const [total, rows] = await this.prisma.$transaction([
+    const [total, rows] = await Promise.all([
       this.prisma.trip.count({ where }),
       this.prisma.trip.findMany({
         where,

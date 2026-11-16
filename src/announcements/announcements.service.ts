@@ -45,7 +45,7 @@ export class AnnouncementsService {
         ? { createdAt: 'asc' }
         : { createdAt: 'desc' };
 
-    const [data, total] = await this.prisma.$transaction([
+    const [data, total] = await Promise.all([
       this.prisma.announcement.findMany({
         where,
         orderBy,

@@ -47,6 +47,8 @@ model Trip {
   companions TripCompanion[]
 
   @@index([startDate])
+  @@index([isPublished, createdAt])
+  @@index([isPublished, price])
 }
 
 model TeamMember {

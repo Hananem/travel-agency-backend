@@ -57,7 +57,7 @@ export class TeamService {
         orderBy = { sortOrder: 'asc' };
     }
 
-    const [data, total] = await this.prisma.$transaction([
+    const [data, total] = await Promise.all([
       this.prisma.teamMember.findMany({
         where,
         orderBy,

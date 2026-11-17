@@ -1,5 +1,5 @@
-﻿
-import {
+﻿import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,18 +8,85 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { TripsService } from './trips.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { QueryTripsDto } from './dto/query-trips.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CloudinaryService } from '../uploads/cloudinary.service';
+
+const imageInterceptor = FileInterceptor('image', {
+  storage: memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 }, // حد Vercel حوالي 4.5MB
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new BadRequestException('Only images are allowed'), false);
+    }
+    cb(null, true);
+  },
+});
+
+// عند الإرسال بـ multipart تصل كل الحقول كنصوص، فنحوّلها هنا
+function normalizeBody(body: Record<string, any>) {
+  const data: Record<string, any> = { ...body };
+
+  for (const key of Object.keys(data)) {
+    if (data[key] === '') delete data[key];
+  }
+
+  for (const key of ['features', 'companions']) {
+    if (typeof data[key] === 'string') {
+      try {
+        data[key] = JSON.parse(data[key]);
+      } catch {
+        throw new BadRequestException(`${key} must be a valid JSON array`);
+      }
+    }
+  }
+
+  if (data.isPublished === 'true') data.isPublished = true;
+  if (data.isPublished === 'false') data.isPublished = false;
+
+  return data;
+}
+
+async function toDto<T extends object>(
+  cls: new () => T,
+  body: Record<string, any>,
+): Promise<T> {
+  const dto = plainToInstance(cls, normalizeBody(body ?? {}), {
+    enableImplicitConversion: true,
+  });
+
+  const errors = await validate(dto, {
+    whitelist: true,
+    forbidNonWhitelisted: true,
+  });
+
+  if (errors.length) {
+    throw new BadRequestException(
+      errors.flatMap((e) => Object.values(e.constraints ?? {})),
+    );
+  }
+
+  return dto;
+}
 
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) {}
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   @Get()
   findPublic(@Query() query: QueryTripsDto) {
@@ -45,22 +112,40 @@ export class TripsController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() dto: CreateTripDto) {
+  @UseInterceptors(imageInterceptor)
+  async create(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: Record<string, any>,
+  ) {
+    const dto = await toDto(CreateTripDto, body);
+
+    if (file) {
+      dto.imageUrl = await this.cloudinary.uploadImage(file, 'trips');
+    }
+
     return this.tripsService.create(dto);
   }
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
-  updateStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateStatusDto,
-  ) {
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
     return this.tripsService.updateStatus(id, dto.isPublished);
   }
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateTripDto) {
+  @UseInterceptors(imageInterceptor)
+  async update(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: Record<string, any>,
+  ) {
+    const dto = await toDto(UpdateTripDto, body);
+
+    if (file) {
+      dto.imageUrl = await this.cloudinary.uploadImage(file, 'trips');
+    }
+
     return this.tripsService.update(id, dto);
   }
 

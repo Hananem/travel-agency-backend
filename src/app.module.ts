@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -11,8 +10,8 @@ import { TeamModule } from './team/team.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DestinationsModule } from './destinations/destinations.module';
-import { UploadsController } from './uploads/uploads.controller';
 import { BookingsModule } from './bookings/bookings.module';
+import { UploadModule } from './uploads/upload.module';
 
 @Module({
   imports: [
@@ -26,11 +25,9 @@ import { BookingsModule } from './bookings/bookings.module';
     DashboardModule,
     DestinationsModule,
     BookingsModule,
+    UploadModule,
   ],
-  controllers: [
-    AppController,
-    UploadsController,
-  ],
+  controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}

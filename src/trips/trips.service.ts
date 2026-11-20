@@ -245,7 +245,14 @@ export class TripsService {
     });
   }
 
-  async create(dto: CreateTripDto) {
+ 
+async create(dto: CreateTripDto) {
+  try {
+    console.log('[CREATE TRIP] Received data:', {
+      ...dto,
+      imageUrl: dto.imageUrl ? 'Image URL provided' : 'No image URL',
+    });
+
     const existing = await this.prisma.trip.findUnique({
       where: { slug: dto.slug },
     });
@@ -257,7 +264,12 @@ export class TripsService {
     this.assertDates(dto.startDate, dto.endDate);
 
     const companions = dto.companions ?? [];
-    await this.assertTeamMembersExist(companions.map((c) => c.teamMemberId));
+
+    await this.assertTeamMembersExist(
+      companions.map((c) => c.teamMemberId),
+    );
+
+    console.log('[CREATE TRIP] Validation passed. Creating database record...');
 
     const trip = await this.prisma.trip.create({
       data: {
@@ -283,8 +295,29 @@ export class TripsService {
       include: tripInclude,
     });
 
+    console.log('[CREATE TRIP] Database record created:', trip.id);
+
     return this.withSeats(trip, 0);
+  } catch (error) {
+    console.error('========== CREATE TRIP ERROR ==========');
+    console.error('Error:', error);
+    console.error(
+      'Message:',
+      error instanceof Error ? error.message : String(error),
+    );
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error('Prisma Error Code:', error.code);
+      console.error('Prisma Error Meta:', error.meta);
+    }
+
+    console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
+    console.error('========================================');
+
+    throw error;
   }
+}
+
 
   async update(id: string, dto: UpdateTripDto) {
     const current = await this.prisma.trip.findUnique({ where: { id } });

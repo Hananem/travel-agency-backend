@@ -247,77 +247,42 @@ export class TripsService {
 
  
 async create(dto: CreateTripDto) {
-  try {
-    console.log('[CREATE TRIP] Received data:', {
-      ...dto,
-      imageUrl: dto.imageUrl ? 'Image URL provided' : 'No image URL',
-    });
+  const { companions, slug, ...rest } = dto;
 
-    const existing = await this.prisma.trip.findUnique({
-      where: { slug: dto.slug },
-    });
+  const finalSlug = slug?.trim() || (await this.generateUniqueSlug(dto.title));
 
-    if (existing) {
-      throw new ConflictException('Trip slug already exists');
-    }
-
-    this.assertDates(dto.startDate, dto.endDate);
-
-    const companions = dto.companions ?? [];
-
-    await this.assertTeamMembersExist(
-      companions.map((c) => c.teamMemberId),
-    );
-
-    console.log('[CREATE TRIP] Validation passed. Creating database record...');
-
-    const trip = await this.prisma.trip.create({
-      data: {
-        title: dto.title,
-        slug: dto.slug,
-        destination: dto.destination,
-        description: dto.description,
-        price: new Prisma.Decimal(dto.price),
-        duration: dto.duration,
-        imageUrl: dto.imageUrl,
-        isPublished: dto.isPublished ?? false,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-        capacity: dto.capacity,
-        features: dto.features ?? [],
-        companions: {
-          create: companions.map((c) => ({
-            teamMemberId: c.teamMemberId,
-            role: c.role,
-          })),
-        },
-      },
-      include: tripInclude,
-    });
-
-    console.log('[CREATE TRIP] Database record created:', trip.id);
-
-    return this.withSeats(trip, 0);
-  } catch (error) {
-    console.error('========== CREATE TRIP ERROR ==========');
-    console.error('Error:', error);
-    console.error(
-      'Message:',
-      error instanceof Error ? error.message : String(error),
-    );
-
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      console.error('Prisma Error Code:', error.code);
-      console.error('Prisma Error Meta:', error.meta);
-    }
-
-    console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
-    console.error('========================================');
-
-    throw error;
-  }
+  return this.prisma.trip.create({
+    data: {
+      ...rest,
+      slug: finalSlug,
+      companions: companions?.length
+        ? {
+            create: companions.map((c) => ({
+              role: c.role,
+              teamMember: { connect: { id: c.teamMemberId } },
+            })),
+          }
+        : undefined,
+    },
+    include: { companions: true },
+  });
 }
 
+private async generateUniqueSlug(title: string): Promise<string> {
+  const base =
+    title
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '') || 'trip';
+
+  let slug = base;
+  let i = 1;
+  while (await this.prisma.trip.findUnique({ where: { slug } })) {
+    slug = `${base}-${i++}`;
+  }
+  return slug;
+}
 
   async update(id: string, dto: UpdateTripDto) {
     const current = await this.prisma.trip.findUnique({ where: { id } });
